@@ -1,30 +1,31 @@
 # Swift Podcast Metadata
 
-A Swift library for fetching podcast metadata and direct audio URLs from Apple Podcasts and Spotify links. Resolves RSS feeds to extract show info, episode details, and downloadable audio files. No API key or authentication required.
+Fetch podcast metadata and direct audio URLs from Apple Podcasts and Spotify links. `PodcastMetadata` resolves the platform URL to its RSS feed, then returns show details, the matched episode, the full episode list, and downloadable audio URLs. No API key or authentication required.
 
 ## Features
 
-- 🎯 **Simple API** — one `fetch()` call for both Apple Podcasts and Spotify URLs
-- 🎵 **Direct audio URLs** — mp3/m4a download links from RSS feeds
-- 📊 **Rich metadata** — show name, author, description, artwork, categories
-- 📋 **Episode details** — title, description, duration, publish date, season/episode numbers
-- 🔄 **Cross-platform** — Spotify links automatically resolve via Apple Podcasts RSS
-- 🔒 **No API key required** — uses public iTunes API and Spotify oembed
-- 🍎 **Cross-platform** — macOS, iOS, tvOS, watchOS
-- ⚡ **Async/await** native — built for modern Swift concurrency
-- 🛡️ **Typed error handling** — specific errors for every failure case
+- 🎯 **Apple Podcasts & Spotify** — accepts URLs from either platform through one entry point
+- 📡 **RSS resolution** — looks up the show via iTunes, then fetches and parses the underlying RSS feed
+- 🎧 **Direct audio URLs** — surfaces the downloadable audio file for matched episodes
+- 📺 **Show metadata** — name, author, description, artwork, language, categories, and explicit flag
+- 📝 **Episode metadata** — title, description, audio URL/type/length, duration, publish date, GUID, episode/season numbers
+- 🔢 **Episode list** — returns every episode parsed from the feed, not just the matched one
+- 🎯 **Episode matching** — matches the specific Apple/Spotify episode from the URL back to the RSS feed
+- 🧮 **Formatted helpers** — `formattedDuration`, `formattedDate`, and `formattedFileSize`
+- 🪪 **Platform tagging** — each result is tagged `.apple` or `.spotify`
+- 🧱 **Typed errors** — descriptive `PodcastMetadataError` cases, including Spotify-exclusive detection
+- ⚡ **Async/await** — a single `async throws` entry point with zero dependencies
+- 🔒 **Codable & Sendable** — models are `Codable`, `Equatable`, and `Sendable`
 
 ## Requirements
 
 - macOS 13.0+ / iOS 16.0+ / tvOS 16.0+ / watchOS 9.0+
 - Swift 6.0+
-- Xcode 16.0+
+- Xcode 26.0+
 
 ## Installation
 
 ### Swift Package Manager
-
-Add the following to your `Package.swift`:
 
 ```swift
 dependencies: [
@@ -32,172 +33,95 @@ dependencies: [
 ]
 ```
 
-Or in Xcode:
-1. File → Add Package Dependencies
-2. Enter the repository URL
-3. Choose version requirements
-
 ## Usage
 
-### Fetch from Apple Podcasts
+### Fetching podcast metadata
 
 ```swift
 import PodcastMetadata
 
-// With a specific episode
-let result = try await PodcastMetadata.fetch("https://podcasts.apple.com/gb/podcast/the-diary-of-a-ceo/id1291423644?i=1000755033920")
-
-print(result.show.name)           // "The Diary Of A CEO with Steven Bartlett"
-print(result.show.author)         // "DOAC"
-print(result.episode?.title ?? "")
-print(result.episode?.audioUrl ?? "")  // Direct mp3 URL
-print(result.episode?.formattedDuration ?? "")
-
-// Show only (no specific episode)
-let result = try await PodcastMetadata.fetch("https://podcasts.apple.com/gb/podcast/the-diary-of-a-ceo/id1291423644")
-print("Episodes: \(result.episodes.count)")
-```
-
-### Fetch from Spotify
-
-Spotify links are automatically cross-referenced with Apple Podcasts to find the RSS audio URL.
-
-```swift
-let result = try await PodcastMetadata.fetch("https://open.spotify.com/episode/06Vp1FqjoLVbMdrfrPveok")
+let result = try await PodcastMetadata.fetch("https://podcasts.apple.com/us/podcast/.../id123?i=456")
 
 print(result.show.name)
+print(result.show.author)
 print(result.episode?.title ?? "")
-print(result.episode?.audioUrl ?? "Spotify exclusive")
+print(result.episode?.audioUrl ?? "")
+print(result.episode?.formattedDuration ?? "")
+print("Episodes in feed: \(result.episodes.count)")
+print("Platform: \(result.platform.rawValue)")
 ```
 
-### Access Episode Audio
+### Spotify links
 
 ```swift
-let result = try await PodcastMetadata.fetch(url)
+// Spotify episodes are matched back to the Apple/RSS feed by title.
+let result = try await PodcastMetadata.fetch("https://open.spotify.com/episode/abc123")
 
 if let episode = result.episode {
-    print("Title: \(episode.title)")
-    print("Audio: \(episode.audioUrl ?? "N/A")")
-    print("Type: \(episode.audioType ?? "N/A")")       // "audio/mpeg"
-    print("Size: \(episode.formattedFileSize ?? "N/A")") // "45.2 MB"
-    print("Duration: \(episode.formattedDuration ?? "N/A")")
-    print("Published: \(episode.formattedDate ?? "N/A")")
+    print(episode.title)
+    print(episode.audioUrl ?? "No public audio URL")  // nil for Spotify exclusives
 }
 ```
 
-### Browse All Episodes
+### Iterating episodes
 
 ```swift
 let result = try await PodcastMetadata.fetch(url)
 
-for episode in result.episodes.prefix(10) {
+for episode in result.episodes {
     print("\(episode.title) — \(episode.formattedDuration ?? "?")")
-    print("  Audio: \(episode.audioUrl ?? "N/A")")
+    if let size = episode.formattedFileSize {
+        print("  \(size)")
+    }
 }
 ```
 
-### Show Metadata
-
-```swift
-let result = try await PodcastMetadata.fetch(url)
-
-print("Show: \(result.show.name)")
-print("Author: \(result.show.author)")
-print("Description: \(result.show.description)")
-print("Artwork: \(result.show.artworkUrl ?? "N/A")")
-print("Language: \(result.show.language ?? "N/A")")
-print("Categories: \(result.show.categories)")
-print("Explicit: \(result.show.isExplicit)")
-print("RSS: \(result.show.feedUrl)")
-```
-
-### Error Handling
+### Error handling
 
 ```swift
 do {
     let result = try await PodcastMetadata.fetch(url)
     print(result.show.name)
-} catch PodcastMetadataError.podcastNotFound {
-    print("Podcast not found on Apple Podcasts")
-} catch PodcastMetadataError.spotifyExclusive(let title) {
-    print("\(title) is a Spotify exclusive")
-} catch PodcastMetadataError.feedUnavailable {
-    print("RSS feed is unavailable")
-} catch {
-    print("Error: \(error.localizedDescription)")
+} catch let error as PodcastMetadataError {
+    switch error {
+    case .invalidUrl:
+        print("Provide an Apple Podcasts or Spotify URL")
+    case .podcastNotFound:
+        print("Podcast not found")
+    case .episodeNotFound(let title):
+        print("Episode not found: \(title)")
+    case .feedUnavailable:
+        print("RSS feed unavailable or empty")
+    case .feedParsingError:
+        print("Failed to parse the RSS feed")
+    case .spotifyExclusive(let title):
+        print("\"\(title)\" is a Spotify exclusive")
+    case .networkError(let message), .parsingError(let message):
+        print("Failed: \(message)")
+    }
 }
 ```
 
-## Models
-
-### `PodcastResult`
-
-The main result struct.
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `platform` | `Platform` | `.apple` or `.spotify` |
-| `show` | `ShowMetadata` | Show-level metadata |
-| `episode` | `EpisodeMetadata?` | Matched episode (if specific URL) |
-| `episodes` | `[EpisodeMetadata]` | All episodes from RSS feed |
-
-### `ShowMetadata`
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `name` | `String` | Show name |
-| `author` | `String` | Author/creator |
-| `description` | `String` | Show description |
-| `feedUrl` | `String` | RSS feed URL |
-| `artworkUrl` | `String?` | Cover artwork URL |
-| `language` | `String?` | Language code |
-| `applePodcastsId` | `String?` | Apple Podcasts ID |
-| `categories` | `[String]` | Show categories |
-| `isExplicit` | `Bool` | Explicit content flag |
-
-### `EpisodeMetadata`
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `title` | `String` | Episode title |
-| `description` | `String` | Episode description |
-| `audioUrl` | `String?` | Direct mp3/m4a URL |
-| `audioType` | `String?` | MIME type |
-| `audioLength` | `Int?` | File size in bytes |
-| `formattedFileSize` | `String?` | File size (e.g., "45.2 MB") |
-| `duration` | `Int?` | Duration in seconds |
-| `formattedDuration` | `String?` | Duration as "M:SS" or "H:MM:SS" |
-| `publishedAt` | `Date?` | Publication date |
-| `formattedDate` | `String?` | Readable date string |
-| `artworkUrl` | `String?` | Episode artwork URL |
-| `guid` | `String?` | RSS GUID |
-| `episodeNumber` | `Int?` | Episode number |
-| `seasonNumber` | `Int?` | Season number |
-| `episodeType` | `String?` | "full", "trailer", or "bonus" |
-| `isExplicit` | `Bool` | Explicit content flag |
-
 ## How It Works
 
-### Apple Podcasts URLs
-1. Extracts the podcast ID from the URL
-2. Calls Apple's iTunes Lookup API to get the RSS feed URL
-3. Fetches and parses the RSS feed (standard RSS 2.0 + iTunes namespace)
-4. Matches the specific episode if an episode ID was in the URL
+For Apple Podcasts URLs, the show ID is looked up via the iTunes API to find the RSS feed, which is then fetched and parsed; if the URL names a specific episode, it is matched back into the parsed feed. For Spotify URLs, the episode title is read from Spotify's oembed endpoint, the same show is found on iTunes, and the episode is matched against the RSS feed by title — returning the public audio URL when one exists (`nil` for Spotify exclusives).
 
-### Spotify URLs
-1. Calls Spotify's public oembed endpoint to get the episode title
-2. Searches Apple's iTunes API for the matching show
-3. Fetches the RSS feed and matches the episode by title
-4. Returns the audio URL from the RSS feed
+## Models
 
-This means Spotify-exclusive podcasts (like Joe Rogan) won't have audio URLs since they aren't on Apple Podcasts. The library will still return the episode title from Spotify but the `audioUrl` will be `nil`.
+| Model | Description |
+|-------|-------------|
+| `PodcastResult` | Top-level result: `platform`, `show`, matched `episode`, and all `episodes` |
+| `ShowMetadata` | Name, author, description, feed URL, artwork, language, Apple Podcasts ID, categories, explicit flag |
+| `EpisodeMetadata` | Title, description, audio URL/type/length, duration, publish date, artwork, GUID, episode/season numbers, type, explicit flag, plus `formattedDuration` / `formattedDate` / `formattedFileSize` |
+| `PodcastResult.Platform` | `.apple` or `.spotify` |
+| `PodcastMetadataError` | Typed errors with `LocalizedError` descriptions |
 
-## Limitations
+## Use Cases
 
-- **Spotify exclusives** — podcasts only on Spotify won't have audio URLs (no RSS feed available).
-- **RSS feed size** — some popular podcasts have very large RSS feeds (hundreds of episodes). Parsing may take a moment.
-- **Episode matching** — Spotify → Apple cross-referencing matches by episode title. Titles that differ between platforms may not match.
-- **Feed availability** — some podcasts have restricted or private RSS feeds that can't be fetched.
+- Resolving a shared podcast link to a downloadable audio file
+- Building podcast players or download managers
+- Aggregating show and episode metadata across platforms
+- Linking Spotify episodes to their RSS equivalents
 
 ## Testing
 
@@ -205,17 +129,7 @@ This means Spotify-exclusive podcasts (like Joe Rogan) won't have audio URLs sin
 swift test
 ```
 
-Includes unit tests for RSS parsing and duration formatting, plus integration tests that hit Apple's iTunes API and Spotify's oembed endpoint.
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+Tests cover URL parsing, RSS feed parsing, and episode matching.
 
 ## License
 
@@ -223,4 +137,4 @@ MIT License — see LICENSE file for details.
 
 ## Author
 
-Created by David Sherlock ([ArrayPress](https://github.com/arraypress)) in 2025.
+Created by David Sherlock ([ArrayPress](https://github.com/arraypress)) in 2026.
